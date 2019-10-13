@@ -41,7 +41,6 @@ type LumberjackListener struct {
 	wg sync.WaitGroup
 
 	listener net.Listener
-	server *v2.Server
 
 	parser parsers.Parser
 	acc telegraf.Accumulator
@@ -78,22 +77,6 @@ func (h *LumberjackListener) Description() string {
 }
 
 func (h *LumberjackListener) Gather(_ telegraf.Accumulator) error {
-	for batch := range h.server.ReceiveChan() {
-		batch.ACK()
-		events := batch.Events
-		for _, e := range events {
-			fields := e.(map[string]interface{})
-			metrics, err := h.parser.Parse([]byte(fmt.Sprintf("%v", fields["message"])))
-			if err != nil {
-				h.Log.Debugf("Parse error: %s", err.Error())
-				return err
-			}
-		
-			for _, m := range metrics {
-				h.acc.AddMetric(m)
-			}		
-		}
-	}
 	return nil
 }
 
@@ -145,7 +128,24 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 	go func() {
 		defer h.wg.Done()
 		server, _ := v2.NewWithListener(h.listener)
-		h.server = server
+		for batch := range server.ReceiveChan() {
+			batch.ACK()
+			events := batch.Events
+			for _, e := range events {
+				fields := e.(map[string]interface{})
+				metrics, err := h.parser.Parse([]byte(fmt.Sprintf("%v", fields["message"])))
+				if err != nil {
+					h.Log.Debugf("Parse error: %s", err.Error())
+					return
+				}
+			
+				for _, m := range metrics {
+					h.acc.AddMetric(m)
+				}		
+			}
+		}
+		server.Close()
+		h.Log.Infof("Stopped listening on %s", listener.Addr().String())
 	}()
 
 	h.Log.Infof("Listening on %s", listener.Addr().String())
@@ -155,7 +155,6 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 
 // Stop cleans up all resources
 func (h *LumberjackListener) Stop() {
-	h.server.Close()
 	h.listener.Close()
 	h.wg.Wait()
 }
