@@ -1,13 +1,12 @@
 package lumberjack_listener
 
 import (
-	"crypto/tls"
+	"fmt"
 	"net"
 	"sync"
 	"time"
-	"fmt"
 
-	"github.com/elastic/go-lumber/server/v2"
+	"github.com/elastic/go-lumber/server"
 
 	"github.com/influxdata/telegraf"
 	"github.com/influxdata/telegraf/internal"
@@ -28,8 +27,7 @@ type TimeFunc func() time.Time
 type LumberjackListener struct {
 	ServiceAddress string            `toml:"service_address"`
 	ReadTimeout    internal.Duration `toml:"read_timeout"`
-	WriteTimeout   internal.Duration `toml:"write_timeout"`
-	MaxBodySize    internal.Size     `toml:"max_body_size"`
+	KeepAlive      internal.Duration `toml:"keep_alive"`
 	Port           int               `toml:"port"`
 	TagKeys        []string
 
@@ -43,7 +41,7 @@ type LumberjackListener struct {
 	listener net.Listener
 
 	parser parsers.Parser
-	acc telegraf.Accumulator
+	acc    telegraf.Accumulator
 }
 
 const sampleConfig = `
@@ -82,15 +80,11 @@ func (h *LumberjackListener) Gather(_ telegraf.Accumulator) error {
 
 // Start starts the http listener service.
 func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
-	if h.MaxBodySize.Size == 0 {
-		h.MaxBodySize.Size = defaultMaxBodySize
-	}
-
 	if h.ReadTimeout.Duration < time.Second {
 		h.ReadTimeout.Duration = time.Second
 	}
-	if h.WriteTimeout.Duration < time.Second {
-		h.WriteTimeout.Duration = time.Second
+	if h.KeepAlive.Duration < time.Second {
+		h.KeepAlive.Duration = time.Second
 	}
 
 	h.acc = acc
@@ -100,24 +94,12 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 		return err
 	}
 
-	var listener net.Listener
-	if tlsConf != nil {
-		listener, err = tls.Listen("tcp", h.ServiceAddress, tlsConf)
-	} else {
-		listener, err = net.Listen("tcp", h.ServiceAddress)
-	}
-	if err != nil {
-		return err
-	}
-	h.listener = listener
-	h.Port = listener.Addr().(*net.TCPAddr).Port
-
 	parser, err := parsers.NewParser(&parsers.Config{
-		DataFormat:  "json",
-		MetricName:  "lumberjack",
-		TagKeys:     h.TagKeys,
-		JSONTimeKey: "time",
-		JSONTimeFormat:  "unix",
+		DataFormat:     "json",
+		MetricName:     "lumberjack",
+		TagKeys:        h.TagKeys,
+		JSONTimeKey:    "time",
+		JSONTimeFormat: "unix",
 	})
 	if err != nil {
 		return err
@@ -127,7 +109,19 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 	h.wg.Add(1)
 	go func() {
 		defer h.wg.Done()
-		server, _ := v2.NewWithListener(h.listener)
+
+		server, err := server.ListenAndServe(
+			h.ServiceAddress,
+			server.V1(false),
+			server.V2(true),
+			server.Keepalive(h.KeepAlive.Duration),
+			server.Timeout(h.ReadTimeout.Duration),
+			server.TLS(tlsConf))
+
+		if err != nil {
+			return
+		}
+
 		for batch := range server.ReceiveChan() {
 			batch.ACK()
 			events := batch.Events
@@ -138,17 +132,17 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 					h.Log.Debugf("Parse error: %s", err.Error())
 					return
 				}
-			
+
 				for _, m := range metrics {
 					h.acc.AddMetric(m)
-				}		
+				}
 			}
 		}
 		server.Close()
-		h.Log.Infof("Stopped listening on %s", listener.Addr().String())
+		h.Log.Infof("Stopped listening on %s", h.ServiceAddress)
 	}()
 
-	h.Log.Infof("Listening on %s", listener.Addr().String())
+	h.Log.Infof("Listening on %s", h.ServiceAddress)
 
 	return nil
 }

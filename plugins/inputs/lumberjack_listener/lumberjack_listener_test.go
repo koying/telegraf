@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/telegraf/internal"
-	"github.com/influxdata/telegraf/plugins/parsers"
 	"github.com/influxdata/telegraf/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -42,38 +40,24 @@ var (
 	pki = testutil.NewPKI("../../../testutil/pki")
 )
 
-func newTestHTTPListenerV2() *HTTPListenerV2 {
-	parser, _ := parsers.NewInfluxParser()
-
-	listener := &HTTPListenerV2{
+func newTestLumberjackListener() *LumberjackListener {
+	listener := &LumberjackListener{
 		Log:            testutil.Logger{},
 		ServiceAddress: "localhost:0",
-		Path:           "/write",
-		Methods:        []string{"POST"},
-		Parser:         parser,
 		TimeFunc:       time.Now,
-		MaxBodySize:    internal.Size{Size: 70000},
-		DataSource:     "body",
 	}
 	return listener
 }
 
-func newTestHTTPAuthListener() *HTTPListenerV2 {
-	listener := newTestHTTPListenerV2()
-	listener.BasicUsername = basicUsername
-	listener.BasicPassword = basicPassword
+func newTestHTTPAuthListener() *LumberjackListener {
+	listener := newTestLumberjackListener()
 	return listener
 }
 
-func newTestHTTPSListenerV2() *HTTPListenerV2 {
-	parser, _ := parsers.NewInfluxParser()
-
-	listener := &HTTPListenerV2{
+func newTestHTTPSListenerV2() *LumberjackListener {
+	listener := &LumberjackListener{
 		Log:            testutil.Logger{},
 		ServiceAddress: "localhost:0",
-		Path:           "/write",
-		Methods:        []string{"POST"},
-		Parser:         parser,
 		ServerConfig:   *pki.TLSServerConfig(),
 		TimeFunc:       time.Now,
 	}
@@ -93,7 +77,7 @@ func getHTTPSClient() *http.Client {
 	}
 }
 
-func createURL(listener *HTTPListenerV2, scheme string, path string, rawquery string) string {
+func createURL(listener *LumberjackListener, scheme string, path string, rawquery string) string {
 	u := url.URL{
 		Scheme:   scheme,
 		Host:     "localhost:" + strconv.Itoa(listener.Port),
@@ -161,7 +145,7 @@ func TestWriteHTTPBasicAuth(t *testing.T) {
 }
 
 func TestWriteHTTP(t *testing.T) {
-	listener := newTestHTTPListenerV2()
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))
@@ -210,7 +194,7 @@ func TestWriteHTTP(t *testing.T) {
 
 // http listener should add a newline at the end of the buffer if it's not there
 func TestWriteHTTPNoNewline(t *testing.T) {
-	listener := newTestHTTPListenerV2()
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))
@@ -230,15 +214,9 @@ func TestWriteHTTPNoNewline(t *testing.T) {
 }
 
 func TestWriteHTTPExactMaxBodySize(t *testing.T) {
-	parser, _ := parsers.NewInfluxParser()
-
-	listener := &HTTPListenerV2{
+	listener := &LumberjackListener{
 		Log:            testutil.Logger{},
 		ServiceAddress: "localhost:0",
-		Path:           "/write",
-		Methods:        []string{"POST"},
-		Parser:         parser,
-		MaxBodySize:    internal.Size{Size: int64(len(hugeMetric))},
 		TimeFunc:       time.Now,
 	}
 
@@ -253,15 +231,9 @@ func TestWriteHTTPExactMaxBodySize(t *testing.T) {
 }
 
 func TestWriteHTTPVerySmallMaxBody(t *testing.T) {
-	parser, _ := parsers.NewInfluxParser()
-
-	listener := &HTTPListenerV2{
+	listener := &LumberjackListener{
 		Log:            testutil.Logger{},
 		ServiceAddress: "localhost:0",
-		Path:           "/write",
-		Methods:        []string{"POST"},
-		Parser:         parser,
-		MaxBodySize:    internal.Size{Size: 4096},
 		TimeFunc:       time.Now,
 	}
 
@@ -277,7 +249,7 @@ func TestWriteHTTPVerySmallMaxBody(t *testing.T) {
 
 // test that writing gzipped data works
 func TestWriteHTTPGzippedData(t *testing.T) {
-	listener := newTestHTTPListenerV2()
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))
@@ -311,7 +283,7 @@ func TestWriteHTTPHighTraffic(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Skip("Skipping due to hang on darwin")
 	}
-	listener := newTestHTTPListenerV2()
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))
@@ -340,7 +312,7 @@ func TestWriteHTTPHighTraffic(t *testing.T) {
 }
 
 func TestReceive404ForInvalidEndpoint(t *testing.T) {
-	listener := newTestHTTPListenerV2()
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))
@@ -354,7 +326,7 @@ func TestReceive404ForInvalidEndpoint(t *testing.T) {
 }
 
 func TestWriteHTTPInvalid(t *testing.T) {
-	listener := newTestHTTPListenerV2()
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))
@@ -368,7 +340,7 @@ func TestWriteHTTPInvalid(t *testing.T) {
 }
 
 func TestWriteHTTPEmpty(t *testing.T) {
-	listener := newTestHTTPListenerV2()
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))
@@ -382,10 +354,7 @@ func TestWriteHTTPEmpty(t *testing.T) {
 }
 
 func TestWriteHTTPQueryParams(t *testing.T) {
-	parser, _ := parsers.NewFormUrlencodedParser("query_measurement", nil, []string{"tagKey"})
-	listener := newTestHTTPListenerV2()
-	listener.DataSource = "query"
-	listener.Parser = parser
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))
@@ -404,9 +373,7 @@ func TestWriteHTTPQueryParams(t *testing.T) {
 }
 
 func TestWriteHTTPFormData(t *testing.T) {
-	parser, _ := parsers.NewFormUrlencodedParser("query_measurement", nil, []string{"tagKey"})
-	listener := newTestHTTPListenerV2()
-	listener.Parser = parser
+	listener := newTestLumberjackListener()
 
 	acc := &testutil.Accumulator{}
 	require.NoError(t, listener.Start(acc))

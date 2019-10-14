@@ -408,6 +408,23 @@
   version = "v1.2.0"
 
 [[projects]]
+  digest = "1:1e740c464548791ea20635f2f02351a0319e3d9ac9dbde8505c8784e8904c812"
+  name = "github.com/elastic/go-lumber"
+  packages = [
+    "lj",
+    "log",
+    "protocol/v1",
+    "protocol/v2",
+    "server",
+    "server/internal",
+    "server/v1",
+    "server/v2",
+  ]
+  pruneopts = ""
+  revision = "616041e345fc33c97bc0eb0fa6b388aa07bca3e1"
+  version = "v0.1.0"
+
+[[projects]]
   digest = "1:99a0607f79d36202b64b674c0464781549917cfc4bfb88037aaa98b31e124a18"
   name = "github.com/ericchiang/k8s"
   packages = [
@@ -772,6 +789,25 @@
   packages = ["."]
   pruneopts = ""
   revision = "95032a82bc518f77982ea72343cc1ade730072f0"
+
+[[projects]]
+  digest = "1:602dba8749048b1d46cb0cb576ad014dbdf1812d7abc9bfe9d1b9e495bc4929c"
+  name = "github.com/klauspost/compress"
+  packages = [
+    "flate",
+    "zlib",
+  ]
+  pruneopts = ""
+  revision = "da9470192e5d0ad619defde5ded583e5e907d3e8"
+  version = "v1.8.6"
+
+[[projects]]
+  digest = "1:cb39bebc72505b4120988fb9e258ecffba4ed679dc04794d517198887160df80"
+  name = "github.com/klauspost/cpuid"
+  packages = ["."]
+  pruneopts = ""
+  revision = "05a8198c0f5a27739aec358908d7e12c64ce6eb7"
+  version = "v1.2.1"
 
 [[projects]]
   branch = "master"
@@ -1711,6 +1747,7 @@
     "github.com/docker/docker/pkg/stdcopy",
     "github.com/docker/libnetwork/ipvs",
     "github.com/eclipse/paho.mqtt.golang",
+    "github.com/elastic/go-lumber/server",
     "github.com/ericchiang/k8s",
     "github.com/ericchiang/k8s/apis/apps/v1beta1",
     "github.com/ericchiang/k8s/apis/apps/v1beta2",
