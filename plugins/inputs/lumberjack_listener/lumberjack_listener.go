@@ -2,7 +2,6 @@ package lumberjack_listener
 
 import (
 	"fmt"
-	"net"
 	"sync"
 	"time"
 
@@ -30,6 +29,7 @@ type LumberjackListener struct {
 	KeepAlive      internal.Duration `toml:"keep_alive"`
 	Port           int               `toml:"port"`
 	TagKeys        []string
+	StringFields   []string        `toml:"string_fields"`
 
 	tlsint.ServerConfig
 
@@ -37,8 +37,6 @@ type LumberjackListener struct {
 	Log telegraf.Logger
 
 	wg sync.WaitGroup
-
-	listener net.Listener
 
 	parser parsers.Parser
 	acc    telegraf.Accumulator
@@ -100,6 +98,7 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 		TagKeys:        h.TagKeys,
 		JSONTimeKey:    "time",
 		JSONTimeFormat: "unix",
+		JSONStringFields: h.StringFields,
 	})
 	if err != nil {
 		return err
@@ -123,7 +122,6 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 		}
 
 		for batch := range server.ReceiveChan() {
-			batch.ACK()
 			events := batch.Events
 			for _, e := range events {
 				fields := e.(map[string]interface{})
@@ -137,6 +135,7 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 					h.acc.AddMetric(m)
 				}
 			}
+			batch.ACK()
 		}
 		server.Close()
 		h.Log.Infof("Stopped listening on %s", h.ServiceAddress)
@@ -149,8 +148,7 @@ func (h *LumberjackListener) Start(acc telegraf.Accumulator) error {
 
 // Stop cleans up all resources
 func (h *LumberjackListener) Stop() {
-	h.listener.Close()
-	h.wg.Wait()
+	// h.wg.Wait()
 }
 
 func init() {
